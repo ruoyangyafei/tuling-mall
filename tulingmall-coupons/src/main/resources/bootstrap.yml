@@ -1,0 +1,13 @@
+spring:
+  cloud:
+    nacos:
+      config:
+        server-addr: http://127.0.0.1:8848
+        file-extension: yml
+        shared-dataids: tulingmall-db-common.yml,tulingmall-nacos.yml
+        refreshable-dataids: tulingmall-db-common.yml,tulingmall-nacos.yml
+        namespace: 4026b17b-4826-4d55-a29d-c1ff4f7ef32c
+  application:
+    name: tulingmall-coupons
+  profiles:
+    active: dev

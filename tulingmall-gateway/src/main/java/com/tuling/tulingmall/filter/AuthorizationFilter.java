@@ -51,7 +51,7 @@ public class AuthorizationFilter implements GlobalFilter,Ordered,InitializingBea
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-
+        // 拿到当前请求路径url
         String currentUrl = exchange.getRequest().getURI().getPath();
 
         //1:不需要认证的url

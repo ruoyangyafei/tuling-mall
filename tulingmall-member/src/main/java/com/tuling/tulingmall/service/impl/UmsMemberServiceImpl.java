@@ -179,8 +179,7 @@ public class UmsMemberServiceImpl implements UmsMemberService {
 
         try{
 
-            //远程调用认证服务器 进行用户登陆
-
+            //远程调用认证服务器 进行用户登陆  此时的restTemplate已经加了@LoadBalance注解，可以通过服务名进行负载均衡
             response = restTemplate.exchange(MDA.OAUTH_LOGIN_URL, HttpMethod.POST, wrapOauthTokenRequest(username,password), TokenInfo.class);
 
             TokenInfo tokenInfo = response.getBody();

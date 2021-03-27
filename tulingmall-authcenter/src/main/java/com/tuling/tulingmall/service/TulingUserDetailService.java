@@ -45,7 +45,7 @@ public class TulingUserDetailService implements UserDetailsService {
             log.warn("用户登陆用户名为空:{}",userName);
             throw new UsernameNotFoundException("用户名不能为空");
         }
-
+        // 根据用户名获取用户信息
         UmsMember umsMember = getByUsername(userName);
 
         if(null == umsMember) {
@@ -53,9 +53,8 @@ public class TulingUserDetailService implements UserDetailsService {
         }
 
         log.info("根据用户名:{}获取用户登陆信息:{}",userName,umsMember);
-
+        // 用MemberDetails进行包装，包装的目的是为了1.能够兼容springsecurity，2.通过TulingTokenEnhancer往token里面增加非业务字段，对token进行增强
         MemberDetails memberDetails = new MemberDetails(umsMember);
-
         return memberDetails;
     }
 

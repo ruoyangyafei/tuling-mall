@@ -47,6 +47,7 @@
 			<artifactId>tulingmall-mbg</artifactId>
 		</dependency>
 
+<!--		属性映射依赖-->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-configuration-processor</artifactId>

@@ -24,6 +24,7 @@ mybatis:
     - classpath:dao/*.xml
     - classpath*:com/**/mapper/*.xml
 
+#jwt.jks文件的生成参考jdk的keytools
 tuling:
     jwt:
       keyPairName: jwt.jks

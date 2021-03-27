@@ -31,37 +31,36 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
     /**
      * 方法实现说明:用于构建用户认证组件,需要传递userDetailsService和密码加密器
      * @author:smlz
-     * @param auth
+     * @param authenticationManagerBuilder 此参数作用是用来构建AuthenticationManager，而AuthenticationManager就会拥有tulingUserDetailService
+     * 和PasswordEncoder这两个参数，tulingUserDetailService用来去查你的数据库校验用户，PasswordEncoder用于加解密
      * @return:
      * @exception:
      * @date:2019/12/25 14:31
      */
     @Override
-    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
-        auth.userDetailsService(tulingUserDetailService).passwordEncoder(passwordEncoder());
+    protected void configure(AuthenticationManagerBuilder authenticationManagerBuilder) throws Exception {
+        authenticationManagerBuilder.userDetailsService(tulingUserDetailService).passwordEncoder(passwordEncoder());
     }
 
-
-    /**
-     * 设置前台静态资源不拦截
-     * @param web
-     * @throws Exception
-     */
     @Override
-    public void configure(WebSecurity web) throws Exception {
-        web.ignoring().antMatchers("/assets/**", "/css/**", "/images/**");
+    @Bean
+    public AuthenticationManager authenticationManagerBean() throws Exception {
+        return super.authenticationManagerBean();
     }
-
-
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    @Bean
-    public AuthenticationManager authenticationManagerBean() throws Exception {
-        return super.authenticationManagerBean();
+    /**
+     * 设置哪些资源不被拦截，比如前台静态资源不拦截
+     * @param web
+     * @throws Exception
+     */
+    @Override
+    public void configure(WebSecurity web) throws Exception {
+        web.ignoring().antMatchers("/assets/**", "/css/**", "/images/**");
     }
 
     public static void main(String[] args) {

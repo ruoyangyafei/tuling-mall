@@ -9,7 +9,7 @@ import java.util.Arrays;
 import java.util.Collection;
 
 /**
- * 会员详情封装
+ * MemberDetails会员详情封装 可以看做是对UmsMember表的扩展
  * Created by macro on 2018/8/3.
  */
 public class MemberDetails implements UserDetails {

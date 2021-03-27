@@ -34,11 +34,12 @@ import java.util.Arrays;
 * @version: 1.0
 */
 @Configuration
-@EnableAuthorizationServer
+@EnableAuthorizationServer   // 此注解的作用是开启授权服务，暴露出接口，让用户调用
 @EnableConfigurationProperties(value = JwtCAProperties.class)
+// 认证需要三块信息，用户的信息，微服务的信息和接入app的信息
 public class TulingAuthServerConfig extends AuthorizationServerConfigurerAdapter {
 
-
+    // 这是从WebSecurityConfig那边组装好注入过来的类
     @Autowired
     private AuthenticationManager authenticationManager;
 
@@ -53,6 +54,33 @@ public class TulingAuthServerConfig extends AuthorizationServerConfigurerAdapter
 
 
     /**
+     * 可理解为：保存第三方客户端的
+     * 方法实现说明:认证服务器能够给哪些 客户端颁发token  我们需要把客户端的配置 存储到
+     * 数据库中 可以基于内存存储和db存储
+     * @author:smlz
+     * @return:
+     * @exception:
+     * @date:2020/1/15 20:18
+     */
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        clients.withClientDetails(clientDetails());
+    }
+
+    /**
+     * 方法实现说明:用于查找我们第三方客户端的组件 主要用于查找 数据库表 oauth_client_details
+     * @author:smlz
+     * @return:
+     * @exception:
+     * @date:2020/1/15 20:19
+     */
+    @Bean
+    public ClientDetailsService clientDetails() {
+        return new JdbcClientDetailsService(dataSource);
+    }
+
+    /**
+     * 配置token
      * 方法实现说明:我们颁发的token通过jwt存储
      * @author:smlz
      * @return:
@@ -79,36 +107,12 @@ public class TulingAuthServerConfig extends AuthorizationServerConfigurerAdapter
     }
 
 
+    /**
+     * 因为想往jwt里增加业务字段，所以提供一个类对jwt进行增强
+     */
     @Bean
     public TulingTokenEnhancer tulingTokenEnhancer() {
         return new TulingTokenEnhancer();
-    }
-
-
-
-    /**
-     * 方法实现说明:认证服务器能够给哪些 客户端颁发token  我们需要把客户端的配置 存储到
-     * 数据库中 可以基于内存存储和db存储
-     * @author:smlz
-     * @return:
-     * @exception:
-     * @date:2020/1/15 20:18
-     */
-    @Override
-    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
-        clients.withClientDetails(clientDetails());
-    }
-
-    /**
-     * 方法实现说明:用于查找我们第三方客户端的组件 主要用于查找 数据库表 oauth_client_details
-     * @author:smlz
-     * @return:
-     * @exception:
-     * @date:2020/1/15 20:19
-     */
-    @Bean
-    public ClientDetailsService clientDetails() {
-        return new JdbcClientDetailsService(dataSource);
     }
 
     /**
@@ -120,14 +124,15 @@ public class TulingAuthServerConfig extends AuthorizationServerConfigurerAdapter
      */
     @Override
     public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
-
         TokenEnhancerChain tokenEnhancerChain = new TokenEnhancerChain();
+        // 参数是list集合，第一个元素是增强对象，第二个元素是被增强对象
         tokenEnhancerChain.setTokenEnhancers(Arrays.asList(tulingTokenEnhancer(),jwtAccessTokenConverter()));
 
+        // 配置端点
         endpoints.tokenStore(tokenStore()) //授权服务器颁发的token 怎么存储的
                 .tokenEnhancer(tokenEnhancerChain)
                 .userDetailsService(tulingUserDetailService) //用户来获取token的时候需要 进行账号密码
-                .authenticationManager(authenticationManager);
+                .authenticationManager(authenticationManager); // 配置认证管理器，用于用户校验
     }
 
 

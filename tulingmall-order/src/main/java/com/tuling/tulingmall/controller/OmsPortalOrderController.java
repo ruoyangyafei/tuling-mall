@@ -94,6 +94,9 @@ public class OmsPortalOrderController {
         return secKillOrderService.generateConfirmMiaoShaOrder(productId,memberId,token);
     }
 
+    /**
+    * 秒杀生成订单
+    */
     @RequestMapping(value = "/{token}/generateOrder",method = RequestMethod.POST)
     @ResponseBody
     public CommonResult generateMiaoShaOrder(@RequestBody OrderParam orderParam,

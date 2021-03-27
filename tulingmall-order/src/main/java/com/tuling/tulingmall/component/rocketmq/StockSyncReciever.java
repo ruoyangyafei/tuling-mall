@@ -1,17 +1,13 @@
 package com.tuling.tulingmall.component.rocketmq;
 
-import com.tuling.tulingmall.common.api.CommonResult;
 import com.tuling.tulingmall.common.constant.RedisKeyPrefixConst;
 import com.tuling.tulingmall.feignapi.pms.PmsProductFeignApi;
 import com.tuling.tulingmall.util.RedisOpsUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.TimeUnit;
 
 /**
  *                  ,;,,;
@@ -29,6 +25,10 @@ import java.util.concurrent.TimeUnit;
  * @slogan: 天下风云出我辈，一入代码岁月催
  * @description:
  **/
+
+/**
+* mysql和redis数据同步监听器
+*/
 @Slf4j
 @Component
 @RocketMQMessageListener(topic = "stock-sync",consumerGroup = "stock-sync-worker")
@@ -61,7 +61,7 @@ public class StockSyncReciever implements RocketMQListener<String> {
             if(stock > 0){
                 //重置库存
                 redisOpsUtil.set(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productID,stock);
-                //删除同步标记
+                //同步完成后，删除同步标记
                 redisOpsUtil.delete(RedisKeyPrefixConst.STOCK_REFRESHED_MESSAGE_PREFIX + promotionId);
             }
         }

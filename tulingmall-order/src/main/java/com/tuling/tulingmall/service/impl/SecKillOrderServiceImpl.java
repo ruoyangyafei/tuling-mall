@@ -23,10 +23,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronizationAdapter;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
+
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -66,8 +64,9 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
     /**
      * 秒杀订单确认信息
      */
+    @Override
     public CommonResult generateConfirmMiaoShaOrder(Long productId
-            , Long memberId,String token) throws BusinessException {
+            , Long memberId, String token) throws BusinessException {
         //todo 进行订单金额确认前的库存与购买权限检查
         CommonResult commonResult = confirmCheck(productId,memberId,token);
         if(commonResult.getCode() == 500){
@@ -133,6 +132,9 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
     @Override
     public CommonResult<Map<String,Object>> generateSecKillOrder(OrderParam orderParam, Long memberId,String token) throws BusinessException {
         Long productId = orderParam.getItemIds().get(0);
+        /**
+        * 如果库存卖完，直接返回
+        */
         CommonResult commonResult = confirmCheck(productId,memberId,token);
         if(commonResult.getCode() == 500){
             return commonResult;
@@ -149,7 +151,7 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
         //TODO 通过Feign远程调用 会员地址服务
         UmsMemberReceiveAddress address = umsMemberFeignApi.getItem(orderParam.getMemberReceiveAddressId()).getData();
 
-        //预减库存
+        //预减库存,如果库存减成功则继续，如果不成功则返回 【目前默认减一，你自己可以调整】
         if(!preDecrRedisStock(productId,product.getFlashPromotionRelationId())){
             return CommonResult.failed("下单失败,已经抢购完了");
         }
@@ -217,7 +219,7 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
 
         /*----------------------------------基本方案---------------------------------------*/
         /*try {
-            //悲观锁
+            //悲观锁  select flash_promotion_count from sms_flash_promotion_product_relation where id=#{id} for UPDATE
             Integer dbStock = miaoShaStockDao.selectMiaoShaStockInLock(product.getFlashPromotionRelationId());
             if(dbStock <= 0){
                 return CommonResult.failed("商品已抢完！");
@@ -295,6 +297,7 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
                  * 清除掉本地guavacache已经售完的标记
                  */
                 cache.remove(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId);
+
                 //通知服务群,清除本地售罄标记缓存
                 if(shouldPublishCleanMsg(productId)){
                     redisOpsUtil.publish("cleanNoStockCache",productId);
@@ -304,15 +307,17 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
             }
         } catch (Exception e) {
             log.error("消息发送失败:error msg:{}",e.getMessage(),e.getCause());
+            // 如果在这个地方异常出现后还没来得及处理即还没有进行库存回补，jvm就挂了，此处也是少买的一个点
             /*
-             * 还原预减库存
+             * 因为抛异常之前已经减过库存了，操作的是redis，所以异常时redis是无法回滚的，
+             * 所以此时要手动还原预减库存
              */
             incrRedisStock(productId);
             /*
              * 清除掉本地guavacache已经售完的标记
              */
             cache.remove(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId);
-            //通知服务群,清除本地售罄标记缓存
+            //使用redis的发布订阅模式通知服务群,清除本地售罄标记缓存
             if(shouldPublishCleanMsg(productId)) {
                 redisOpsUtil.publish("cleanNoStockCache", productId);
             }
@@ -322,6 +327,46 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
         return CommonResult.success(result,"下单中.....");
     }
 
+    /**
+     * Redis预减库存
+     */
+    private boolean preDecrRedisStock(Long productId,Long promotionId) {
+        Long stock = redisOpsUtil.decr(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId);
+        if (stock < 0) {
+            /*
+             * 还原缓存里的库存，这里的目的就是为了防止已经预减过库存了，但是对方取消了，如果不把库存回补回去会出现少买的情况
+             * 因为你预减的库存不买了，别人想买的买不到了
+             */
+            incrRedisStock(productId);
+            /**
+             * notify:<strong>千万注意这里一定不能用setNX,一旦使用,可能出现如果jvm在消息发出去前挂掉了
+             * ,那也就意味着当前产品库存没有办法在卖完后跟DB做同步.</strong>
+             */
+            // 如果没有在同步，则进行同步
+            if(!redisOpsUtil.hasKey(RedisKeyPrefixConst.STOCK_REFRESHED_MESSAGE_PREFIX + promotionId)){
+                /*
+                 * 这里这么做的目的非常重要：确保不会发生少卖现象
+                 * 发延时消息,60s后,同步一次库存; 高并发下可能发送多条延时消息，但是没关系，可以容忍
+                 */
+                if(orderMessageSender.sendStockSyncMessage(productId,promotionId)){
+                    // 如果消息队列发送了，就打个正在同步的标记
+                    redisOpsUtil.set(RedisKeyPrefixConst.STOCK_REFRESHED_MESSAGE_PREFIX + promotionId,0);
+                }
+            }
+            return false;
+        }
+        return true;
+    }
+
+    //还原库存
+    @Override
+    public void incrRedisStock(Long productId){
+        if(redisOpsUtil.hasKey(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId)){
+            redisOpsUtil.incr(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId);
+        }
+    }
+
+    @Override
     @Transactional
     public Long asyncCreateOrder(OmsOrder order,OmsOrderItem orderItem,Long flashPromotionRelationId) {
         //减库存
@@ -351,45 +396,14 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
         return order.getId();
     }
 
-    /**
-     * Redis预减库存
-     */
-    private boolean preDecrRedisStock(Long productId,Long promotionId) {
-        Long stock = redisOpsUtil.decr(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId);
-        if (stock < 0) {
-            /*
-             * 还原缓存里的库存，思考这里加回来的目的！
-             */
-            incrRedisStock(productId);
-            /**
-             * notify:<strong>千万注意这里一定不能用setNX,一旦使用,可能出现如果jvm在消息发出去前挂掉了
-             * ,那也就意味着当前产品库存没有办法在卖完后跟DB做同步.</strong>
-             */
-            if(!redisOpsUtil.hasKey(RedisKeyPrefixConst.STOCK_REFRESHED_MESSAGE_PREFIX + promotionId)){
-                /*
-                 * 这里这么做的目的非常重要：确保不会发生少卖现象
-                 * 发延时消息,60s后,同步一次库存; 高并发下可能发送多条延时消息，但是没关系，可以容忍
-                 */
-                if(orderMessageSender.sendStockSyncMessage(productId,promotionId)){
-                    redisOpsUtil.set(RedisKeyPrefixConst.STOCK_REFRESHED_MESSAGE_PREFIX + promotionId,0);
-                }
-            }
-            return false;
-        }
-        return true;
-    }
-
-    //还原库存
-    public void incrRedisStock(Long productId){
-        if(redisOpsUtil.hasKey(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId)){
-            redisOpsUtil.incr(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId);
-        }
-    }
-
     /*
      * 订单下单前的购买与检查
      */
     private CommonResult confirmCheck(Long productId,Long memberId,String token) throws BusinessException {
+
+        /**
+        * 直接访问redis会有一定的开销，所以先让其访问本地缓存
+        */
         Boolean localcache = cache.getCache(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId);
         if(localcache != null && localcache){
             return CommonResult.failed("商品已经售罄,请购买其它商品!");
@@ -405,8 +419,8 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
 
         //从redis缓存当中取出当前要购买的商品库存
         Integer stock = redisOpsUtil.get(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId,Integer.class);
-
         if(stock == null || stock <= 0){
+            // 如果redis里卖完，直接更新本地缓存，下次就能直接通过本地缓存校验返回了
             cache.setLocalCache(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId,true);
             return CommonResult.failed("商品已经售罄,请购买其它商品!");
         }
@@ -421,6 +435,7 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
         return CommonResult.success(null);
     }
 
+    @Override
     public boolean shouldPublishCleanMsg(Long productId){
         Integer stock = redisOpsUtil.get(RedisKeyPrefixConst.MIAOSHA_STOCK_CACHE_PREFIX + productId,Integer.class);
         return (stock == null || stock <= 0);
@@ -429,6 +444,7 @@ public class SecKillOrderServiceImpl implements SecKillOrderService {
     /**
      * 获取产品信息,http调用产品服务
      */
+    @Override
     public PmsProductParam getProductInfo(Long productId){
         //获取商品信息,判断当前商品是否为秒杀商品
         CommonResult<PmsProductParam> commonResult = pmsProductFeignApi.getProductInfo(productId);

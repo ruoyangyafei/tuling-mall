@@ -13,7 +13,6 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
-import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.listener.adapter.MessageListenerAdapter;
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
@@ -65,6 +64,9 @@ public class RedisConifg {
     public RedisMessageListenerContainer redisMessageListenerContainer(){
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
+        // 容器创建监听器，监听这个频道cleanNoStockCache。注意redis的发布订阅模式是没有ack机制的，是无法保证每个实例都能够收得到消息
+        // 有可能某个节点由于网络抖动是无法保证集群间数据强一致性的
+        // 收到消息之后如何执行，具体有RedisChannelListener去处理。当向redis里发送pubsub消息后，该消息就会通知所有的服务，因为服务中都对该通道进行了监听
         container.addMessageListener(messageListenerAdapter(),channelTopic());
         return container;
     }

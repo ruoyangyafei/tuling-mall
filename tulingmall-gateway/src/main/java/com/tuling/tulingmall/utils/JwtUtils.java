@@ -40,7 +40,7 @@ public class JwtUtils {
     private static final String CLIENT_SECRET = "smlz";
 
     /**
-     * 认证服务器暴露的获取token_key的地址
+     * 认证服务器暴露的获取token_key的地址即获取公钥的地址
      */
     private static final String AUTH_TOKEN_KEY_URL = "http://tulingmall-authcenter/oauth/token_key";
 
@@ -65,9 +65,8 @@ public class JwtUtils {
         headers.setBasicAuth(CLIENT_ID,CLIENT_SECRET);
         HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(null, headers);
 
-        //第二步:远程调用获取token_key
+        //第二步:远程调用获取token_key。此时授权服务需要对此请求放行
         try {
-
             ResponseEntity<Map> response = restTemplate.exchange(AUTH_TOKEN_KEY_URL, HttpMethod.GET, entity, Map.class);
 
             String tokenKey = response.getBody().get("value").toString();
@@ -129,8 +128,6 @@ public class JwtUtils {
             Jwt<JwsHeader, Claims> parseClaimsJwt = Jwts.parser().setSigningKey(publicKey).parseClaimsJws(token);
 
             Claims claims = parseClaimsJwt.getBody();
-
-            //log.info("claims:{}",claims);
 
             return claims;
 

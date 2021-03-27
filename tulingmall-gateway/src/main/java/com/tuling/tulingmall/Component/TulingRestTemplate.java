@@ -23,12 +23,16 @@ import java.util.Random;
 @Slf4j
 public class TulingRestTemplate extends RestTemplate {
 
+    /**
+    * DiscoveryClient是springcloudcommon里面的类，该common定义了很多抽象，各个接入springCloud的组件都需要实现定义的抽象接口
+    */
     private DiscoveryClient discoveryClient;
 
     public TulingRestTemplate(DiscoveryClient discoveryClient) {
         this.discoveryClient = discoveryClient;
     }
 
+    @Override
     protected <T> T doExecute(URI url, @Nullable HttpMethod method, @Nullable RequestCallback requestCallback,
                               @Nullable ResponseExtractor<T> responseExtractor) throws RestClientException {
 

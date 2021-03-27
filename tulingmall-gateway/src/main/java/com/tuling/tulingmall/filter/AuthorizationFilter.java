@@ -1,6 +1,6 @@
 package com.tuling.tulingmall.filter;
 
-import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.tuling.tulingmall.Component.TulingRestTemplate;
 import com.tuling.tulingmall.common.api.ResultCode;
 import com.tuling.tulingmall.common.exception.GateWayException;
@@ -27,6 +27,7 @@ import java.util.Map;
 
 /**
  * 认证过滤器,根据url判断用户请求是要经过认证 才能访问
+ * 实现InitializingBean的目的是为了在容器启动时就拿到公钥
  * Created by smlz on 2019/12/17.
  */
 @Component
@@ -60,8 +61,6 @@ public class AuthorizationFilter implements GlobalFilter,Ordered,InitializingBea
             return chain.filter(exchange);
         }
 
-        //log.info("需要认证的URL:{}",currentUrl);
-
         //第一步:解析出我们Authorization的请求头  value为: “bearer XXXXXXXXXXXXXX”
         String authHeader = exchange.getRequest().getHeaders().getFirst("Authorization");
 
@@ -91,16 +90,11 @@ public class AuthorizationFilter implements GlobalFilter,Ordered,InitializingBea
      * @date:2020/1/22 12:12
      */
     private ServerWebExchange wrapHeader(ServerWebExchange serverWebExchange,Claims claims) {
-
-        String loginUserInfo = JSON.toJSONString(claims);
-
-        //log.info("jwt的用户信息:{}",loginUserInfo);
-
+        // 这个地方可能获取为空，要进行空指针的避免
         String memberId = claims.get("additionalInfo",Map.class).get("memberId").toString();
+        String nickName = (claims.get("additionalInfo",Map.class).get("nickName"))==null?"moren":(claims.get("additionalInfo",Map.class).get("nickName")).toString();
 
-        String nickName = claims.get("additionalInfo",Map.class).get("nickName").toString();
-
-        //向headers中放文件，记得build
+        //向headers中放文件，记得build.这个地方的值是不能为空的，如果header里面为空则会报错
         ServerHttpRequest request = serverWebExchange.getRequest().mutate()
                 .header("username",claims.get("user_name",String.class))
                 .header("memberId",memberId)
@@ -162,6 +156,8 @@ public class AuthorizationFilter implements GlobalFilter,Ordered,InitializingBea
 
     /**
      * 方法实现说明:网关服务启动 生成公钥
+     * 此时有个注意点：当调用afterPropertiesSet这个方法时，如果使用RestTemplate上面加上@LoadBalance注解是无法进项负载均衡的
+     * 具体原因请看笔记，所以此时需要自己去实现负载均衡
      * @author:smlz
      * @return:
      * @exception:
@@ -171,6 +167,7 @@ public class AuthorizationFilter implements GlobalFilter,Ordered,InitializingBea
     public void afterPropertiesSet() throws Exception {
         //初始化公钥
         this.publicKey = JwtUtils.genPulicKey(restTemplate);
+        log.info("获取公钥信息如下： = " + JSONObject.toJSONString(this.publicKey));
     }
 
 }
